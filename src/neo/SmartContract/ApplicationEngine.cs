@@ -42,7 +42,7 @@ namespace Neo.SmartContract
         private List<IDisposable> Disposables => disposables ??= new List<IDisposable>();
         public TriggerType Trigger { get; }
         public IVerifiable ScriptContainer { get; }
-        public StoreView Snapshot { get; }
+        public DataCache Snapshot { get; }
         public Block PersistingBlock { get; }
         public long GasConsumed { get; private set; } = 0;
         public long GasLeft => gas_amount - GasConsumed;
@@ -52,15 +52,15 @@ namespace Neo.SmartContract
         public UInt160 EntryScriptHash => EntryContext?.GetScriptHash();
         public IReadOnlyList<NotifyEventArgs> Notifications => notifications ?? (IReadOnlyList<NotifyEventArgs>)Array.Empty<NotifyEventArgs>();
 
-        protected ApplicationEngine(TriggerType trigger, IVerifiable container, StoreView snapshot, Block persistingBlock, long gas)
+        protected ApplicationEngine(TriggerType trigger, IVerifiable container, DataCache snapshot, Block persistingBlock, long gas)
         {
             this.Trigger = trigger;
             this.ScriptContainer = container;
             this.Snapshot = snapshot;
             this.PersistingBlock = persistingBlock;
             this.gas_amount = gas;
-            this.exec_fee_factor = snapshot is null ? PolicyContract.DefaultExecFeeFactor : NativeContract.Policy.GetExecFeeFactor(Snapshot);
-            this.StoragePrice = snapshot is null ? PolicyContract.DefaultStoragePrice : NativeContract.Policy.GetStoragePrice(Snapshot);
+            this.exec_fee_factor = snapshot is null || persistingBlock?.Index == 0 ? PolicyContract.DefaultExecFeeFactor : NativeContract.Policy.GetExecFeeFactor(Snapshot);
+            this.StoragePrice = snapshot is null || persistingBlock?.Index == 0 ? PolicyContract.DefaultStoragePrice : NativeContract.Policy.GetStoragePrice(Snapshot);
         }
 
         protected internal void AddGas(long gas)
@@ -80,8 +80,8 @@ namespace Neo.SmartContract
         {
             ContractState contract = NativeContract.ContractManagement.GetContract(Snapshot, contractHash);
             if (contract is null) throw new InvalidOperationException($"Called Contract Does Not Exist: {contractHash}");
-            ContractMethodDescriptor md = contract.Manifest.Abi.GetMethod(method);
-            if (md is null) throw new InvalidOperationException($"Method {method} Does Not Exist In Contract {contractHash}");
+            ContractMethodDescriptor md = contract.Manifest.Abi.GetMethod(method, args.Length);
+            if (md is null) throw new InvalidOperationException($"Method \"{method}\" with {args.Length} parameter(s) doesn't exist in the contract {contractHash}.");
             return CallContractInternal(contract, md, flags, hasReturnValue, args);
         }
 
@@ -113,7 +113,7 @@ namespace Neo.SmartContract
 
             if (args.Count != method.Parameters.Length) throw new InvalidOperationException($"Method {method} Expects {method.Parameters.Length} Arguments But Receives {args.Count} Arguments");
             if (hasReturnValue ^ (method.ReturnType != ContractParameterType.Void)) throw new InvalidOperationException("The return value type does not match.");
-            ExecutionContext context_new = LoadContract(contract, method.Name, flags & callingFlags, hasReturnValue, (ushort)args.Count);
+            ExecutionContext context_new = LoadContract(contract, method, flags & callingFlags);
             state = context_new.GetState<ExecutionContextState>();
             state.CallingScriptHash = callingScriptHash;
 
@@ -146,7 +146,7 @@ namespace Neo.SmartContract
             return (T)Convert(Pop(), new InteropParameterDescriptor(typeof(T)));
         }
 
-        public static ApplicationEngine Create(TriggerType trigger, IVerifiable container, StoreView snapshot, Block persistingBlock = null, long gas = TestModeGas)
+        public static ApplicationEngine Create(TriggerType trigger, IVerifiable container, DataCache snapshot, Block persistingBlock = null, long gas = TestModeGas)
         {
             return applicationEngineProvider?.Create(trigger, container, snapshot, persistingBlock, gas)
                   ?? new ApplicationEngine(trigger, container, snapshot, persistingBlock, gas);
@@ -163,15 +163,11 @@ namespace Neo.SmartContract
             base.LoadContext(context);
         }
 
-        public ExecutionContext LoadContract(ContractState contract, string method, CallFlags callFlags, bool hasReturnValue, ushort pcount)
+        public ExecutionContext LoadContract(ContractState contract, ContractMethodDescriptor method, CallFlags callFlags)
         {
-            ContractMethodDescriptor md = contract.Manifest.Abi.GetMethod(method);
-            if (md is null) return null;
-
             ExecutionContext context = LoadScript(contract.Script,
-                pcount: pcount,
-                rvcount: hasReturnValue ? 1 : 0,
-                initialPosition: md.Offset,
+                rvcount: method.ReturnType == ContractParameterType.Void ? 0 : 1,
+                initialPosition: method.Offset,
                 configureState: p =>
                 {
                     p.CallFlags = callFlags;
@@ -180,7 +176,7 @@ namespace Neo.SmartContract
                 });
 
             // Call initialization
-            var init = contract.Manifest.Abi.GetMethod("_initialize");
+            var init = contract.Manifest.Abi.GetMethod("_initialize", 0);
             if (init != null)
             {
                 LoadContext(context.Clone(init.Offset));
@@ -189,10 +185,10 @@ namespace Neo.SmartContract
             return context;
         }
 
-        public ExecutionContext LoadScript(Script script, ushort pcount = 0, int rvcount = -1, int initialPosition = 0, Action<ExecutionContextState> configureState = null)
+        public ExecutionContext LoadScript(Script script, int rvcount = -1, int initialPosition = 0, Action<ExecutionContextState> configureState = null)
         {
             // Create and configure context
-            ExecutionContext context = CreateContext(script, pcount, rvcount, initialPosition);
+            ExecutionContext context = CreateContext(script, rvcount, initialPosition);
             configureState?.Invoke(context.GetState<ExecutionContextState>());
             // Load context
             LoadContext(context);
@@ -322,16 +318,17 @@ namespace Neo.SmartContract
                 throw new InvalidOperationException("StepOut failed.", FaultException);
         }
 
-        private static Block CreateDummyBlock(StoreView snapshot)
+        private static Block CreateDummyBlock(DataCache snapshot)
         {
-            var currentBlock = snapshot.Blocks[snapshot.CurrentBlockHash];
+            UInt256 hash = NativeContract.Ledger.CurrentHash(snapshot);
+            var currentBlock = NativeContract.Ledger.GetBlock(snapshot, hash);
             return new Block
             {
                 Version = 0,
-                PrevHash = snapshot.CurrentBlockHash,
+                PrevHash = hash,
                 MerkleRoot = new UInt256(),
                 Timestamp = currentBlock.Timestamp + Blockchain.MillisecondsPerBlock,
-                Index = snapshot.Height + 1,
+                Index = currentBlock.Index + 1,
                 NextConsensus = currentBlock.NextConsensus,
                 Witness = new Witness
                 {
@@ -358,16 +355,11 @@ namespace Neo.SmartContract
             Exchange(ref applicationEngineProvider, null);
         }
 
-        public static ApplicationEngine Run(byte[] script, StoreView snapshot = null, IVerifiable container = null, Block persistingBlock = null, int offset = 0, long gas = TestModeGas)
+        public static ApplicationEngine Run(byte[] script, DataCache snapshot = null, IVerifiable container = null, Block persistingBlock = null, int offset = 0, long gas = TestModeGas)
         {
-            SnapshotView disposable = null;
-            if (snapshot is null)
-            {
-                disposable = Blockchain.Singleton.GetSnapshot();
-                snapshot = disposable;
-            }
-            ApplicationEngine engine = Create(TriggerType.Application, container, snapshot, persistingBlock ?? CreateDummyBlock(snapshot), gas);
-            if (disposable != null) engine.Disposables.Add(disposable);
+            snapshot ??= Blockchain.Singleton.View;
+            persistingBlock ??= CreateDummyBlock(snapshot);
+            ApplicationEngine engine = Create(TriggerType.Application, container, snapshot, persistingBlock, gas);
             engine.LoadScript(script, initialPosition: offset);
             engine.Execute();
             return engine;

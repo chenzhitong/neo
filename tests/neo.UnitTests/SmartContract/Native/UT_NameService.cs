@@ -18,7 +18,7 @@ namespace Neo.UnitTests.SmartContract.Native
     [TestClass]
     public class UT_NameService : TestKit
     {
-        protected StoreView _snapshot;
+        protected DataCache _snapshot;
 
         [TestInitialize]
         public void TestSetup()
@@ -37,7 +37,7 @@ namespace Neo.UnitTests.SmartContract.Native
         [TestMethod]
         public void TestRoots()
         {
-            var snapshot = _snapshot.Clone();
+            var snapshot = _snapshot.CreateSnapshot();
             var persistingBlock = new Block() { Index = 1000 };
             var from = NativeContract.NEO.GetCommitteeAddress(snapshot);
 
@@ -62,7 +62,7 @@ namespace Neo.UnitTests.SmartContract.Native
         [TestMethod]
         public void TestPrice()
         {
-            var snapshot = _snapshot.Clone();
+            var snapshot = _snapshot.CreateSnapshot();
             var persistingBlock = new Block() { Index = 1000 };
             var from = NativeContract.NEO.GetCommitteeAddress(snapshot);
 
@@ -87,7 +87,7 @@ namespace Neo.UnitTests.SmartContract.Native
         [TestMethod]
         public void TestRegister()
         {
-            var snapshot = _snapshot.Clone();
+            var snapshot = _snapshot.CreateSnapshot();
             var persistingBlock = new Block() { Index = 1000, Timestamp = 0 };
             var from = NativeContract.NEO.GetCommitteeAddress(snapshot);
 
@@ -108,22 +108,25 @@ namespace Neo.UnitTests.SmartContract.Native
             Assert.IsFalse(Check_Register(snapshot, "neo.com\n", UInt160.Zero, persistingBlock));
 
             // good register
+
+            using var engine = ApplicationEngine.Create(TriggerType.Application, null, snapshot, persistingBlock);
+
             Assert.IsTrue(NativeContract.NameService.IsAvailable(snapshot, "neo.com"));
             result = Check_Register(snapshot, "neo.com", UInt160.Zero, persistingBlock);
             Assert.IsTrue(result);
-            Assert.AreEqual(31536000u, (uint)NativeContract.NameService.Properties(snapshot, Encoding.UTF8.GetBytes("neo.com"))["expiration"].AsNumber());
+            Assert.AreEqual(31536000u, (uint)NativeContract.NameService.Properties(engine, Encoding.UTF8.GetBytes("neo.com"))["expiration"].GetInteger());
             Assert.IsFalse(NativeContract.NameService.IsAvailable(snapshot, "neo.com"));
 
             var resultInt = Check_Renew(snapshot, "neo.com", UInt160.Zero, persistingBlock);
             Assert.AreEqual(31536000u * 2, (uint)resultInt);
-            Assert.AreEqual(31536000u * 2, (uint)NativeContract.NameService.Properties(snapshot, Encoding.UTF8.GetBytes("neo.com"))["expiration"].AsNumber());
+            Assert.AreEqual(31536000u * 2, (uint)NativeContract.NameService.Properties(engine, Encoding.UTF8.GetBytes("neo.com"))["expiration"].GetInteger());
             Assert.IsFalse(NativeContract.NameService.IsAvailable(snapshot, "neo.com"));
         }
 
         [TestMethod]
         public void TestSetRecord()
         {
-            var snapshot = _snapshot.Clone();
+            var snapshot = _snapshot.CreateSnapshot();
             var persistingBlock = new Block() { Index = 1000, Timestamp = 0 };
             var from = NativeContract.NEO.GetCommitteeAddress(snapshot);
 
@@ -155,15 +158,15 @@ namespace Neo.UnitTests.SmartContract.Native
             CollectionAssert.AreEqual(System.Array.Empty<string>(), NativeContract.NameService.GetRecords(snapshot, "neo.com").Select(u => u.Type.ToString() + "=" + u.Data).ToArray());
         }
 
-        internal static bool Check_DeleteRecord(StoreView snapshot, string name, RecordType type, UInt160 signedBy, Block persistingBlock)
+        internal static bool Check_DeleteRecord(DataCache snapshot, string name, RecordType type, UInt160 signedBy, Block persistingBlock)
         {
-            var engine = ApplicationEngine.Create(TriggerType.Application, new Nep17NativeContractExtensions.ManualWitness(signedBy), snapshot, persistingBlock);
-            var script = new ScriptBuilder();
+            using var engine = ApplicationEngine.Create(TriggerType.Application, new Nep17NativeContractExtensions.ManualWitness(signedBy), snapshot, persistingBlock);
+            using var script = new ScriptBuilder();
             script.EmitDynamicCall(NativeContract.NameService.Hash, "deleteRecord", new ContractParameter[] {
                 new ContractParameter(ContractParameterType.String) { Value = name },
                 new ContractParameter(ContractParameterType.Integer) { Value = (int)type }
             });
-            engine.LoadScript(script.ToArray(), 0, -1, 0);
+            engine.LoadScript(script.ToArray());
 
             if (engine.Execute() == VMState.FAULT)
             {
@@ -173,16 +176,16 @@ namespace Neo.UnitTests.SmartContract.Native
             return true;
         }
 
-        internal static bool Check_SetRecord(StoreView snapshot, string name, RecordType type, string data, UInt160 signedBy, Block persistingBlock)
+        internal static bool Check_SetRecord(DataCache snapshot, string name, RecordType type, string data, UInt160 signedBy, Block persistingBlock)
         {
-            var engine = ApplicationEngine.Create(TriggerType.Application, new Nep17NativeContractExtensions.ManualWitness(signedBy), snapshot, persistingBlock);
-            var script = new ScriptBuilder();
+            using var engine = ApplicationEngine.Create(TriggerType.Application, new Nep17NativeContractExtensions.ManualWitness(signedBy), snapshot, persistingBlock);
+            using var script = new ScriptBuilder();
             script.EmitDynamicCall(NativeContract.NameService.Hash, "setRecord", new ContractParameter[] {
                 new ContractParameter(ContractParameterType.String) { Value = name },
                 new ContractParameter(ContractParameterType.Integer) { Value = (int)type },
                 new ContractParameter(ContractParameterType.String) { Value = data }
             });
-            engine.LoadScript(script.ToArray(), 0, -1, 0);
+            engine.LoadScript(script.ToArray());
 
             if (engine.Execute() == VMState.FAULT)
             {
@@ -192,14 +195,14 @@ namespace Neo.UnitTests.SmartContract.Native
             return true;
         }
 
-        internal static BigInteger Check_Renew(StoreView snapshot, string name, UInt160 signedBy, Block persistingBlock)
+        internal static BigInteger Check_Renew(DataCache snapshot, string name, UInt160 signedBy, Block persistingBlock)
         {
-            var engine = ApplicationEngine.Create(TriggerType.Application, new Nep17NativeContractExtensions.ManualWitness(signedBy), snapshot, persistingBlock);
-            var script = new ScriptBuilder();
+            using var engine = ApplicationEngine.Create(TriggerType.Application, new Nep17NativeContractExtensions.ManualWitness(signedBy), snapshot, persistingBlock);
+            using var script = new ScriptBuilder();
             script.EmitDynamicCall(NativeContract.NameService.Hash, "renew", new ContractParameter[] {
                 new ContractParameter(ContractParameterType.String) { Value = name }
             });
-            engine.LoadScript(script.ToArray(), 0, -1, 0);
+            engine.LoadScript(script.ToArray());
 
             if (engine.Execute() == VMState.FAULT)
             {
@@ -212,15 +215,15 @@ namespace Neo.UnitTests.SmartContract.Native
             return result.GetInteger();
         }
 
-        internal static bool Check_SetAdmin(StoreView snapshot, string name, UInt160 admin, UInt160 signedBy, Block persistingBlock)
+        internal static bool Check_SetAdmin(DataCache snapshot, string name, UInt160 admin, UInt160 signedBy, Block persistingBlock)
         {
-            var engine = ApplicationEngine.Create(TriggerType.Application, new Nep17NativeContractExtensions.ManualWitness(admin, signedBy), snapshot, persistingBlock);
-            var script = new ScriptBuilder();
+            using var engine = ApplicationEngine.Create(TriggerType.Application, new Nep17NativeContractExtensions.ManualWitness(admin, signedBy), snapshot, persistingBlock);
+            using var script = new ScriptBuilder();
             script.EmitDynamicCall(NativeContract.NameService.Hash, "setAdmin", new ContractParameter[] {
                 new ContractParameter(ContractParameterType.String) { Value = name },
                 new ContractParameter(ContractParameterType.Hash160) { Value = admin }
             });
-            engine.LoadScript(script.ToArray(), 0, -1, 0);
+            engine.LoadScript(script.ToArray());
 
             if (engine.Execute() == VMState.FAULT)
             {
@@ -230,15 +233,15 @@ namespace Neo.UnitTests.SmartContract.Native
             return true;
         }
 
-        internal static bool Check_Register(StoreView snapshot, string name, UInt160 owner, Block persistingBlock)
+        internal static bool Check_Register(DataCache snapshot, string name, UInt160 owner, Block persistingBlock)
         {
-            var engine = ApplicationEngine.Create(TriggerType.Application, new Nep17NativeContractExtensions.ManualWitness(owner), snapshot, persistingBlock);
-            var script = new ScriptBuilder();
+            using var engine = ApplicationEngine.Create(TriggerType.Application, new Nep17NativeContractExtensions.ManualWitness(owner), snapshot, persistingBlock);
+            using var script = new ScriptBuilder();
             script.EmitDynamicCall(NativeContract.NameService.Hash, "register", new ContractParameter[] {
                 new ContractParameter(ContractParameterType.String) { Value = name },
                 new ContractParameter(ContractParameterType.Hash160) { Value = owner }
             });
-            engine.LoadScript(script.ToArray(), 0, -1, 0);
+            engine.LoadScript(script.ToArray());
 
             if (engine.Execute() == VMState.FAULT)
             {
@@ -251,12 +254,12 @@ namespace Neo.UnitTests.SmartContract.Native
             return result.GetBoolean();
         }
 
-        internal static bool Check_SetPrice(StoreView snapshot, UInt160 signedBy, long price, Block persistingBlock)
+        internal static bool Check_SetPrice(DataCache snapshot, UInt160 signedBy, long price, Block persistingBlock)
         {
-            var engine = ApplicationEngine.Create(TriggerType.Application, new Nep17NativeContractExtensions.ManualWitness(signedBy), snapshot, persistingBlock);
-            var script = new ScriptBuilder();
+            using var engine = ApplicationEngine.Create(TriggerType.Application, new Nep17NativeContractExtensions.ManualWitness(signedBy), snapshot, persistingBlock);
+            using var script = new ScriptBuilder();
             script.EmitDynamicCall(NativeContract.NameService.Hash, "setPrice", new ContractParameter[] { new ContractParameter(ContractParameterType.Integer) { Value = price } });
-            engine.LoadScript(script.ToArray(), 0, -1, 0);
+            engine.LoadScript(script.ToArray());
 
             if (engine.Execute() == VMState.FAULT)
             {
@@ -266,12 +269,12 @@ namespace Neo.UnitTests.SmartContract.Native
             return true;
         }
 
-        internal static bool Check_AddRoot(StoreView snapshot, UInt160 signedBy, string root, Block persistingBlock)
+        internal static bool Check_AddRoot(DataCache snapshot, UInt160 signedBy, string root, Block persistingBlock)
         {
-            var engine = ApplicationEngine.Create(TriggerType.Application, new Nep17NativeContractExtensions.ManualWitness(signedBy), snapshot, persistingBlock);
-            var script = new ScriptBuilder();
+            using var engine = ApplicationEngine.Create(TriggerType.Application, new Nep17NativeContractExtensions.ManualWitness(signedBy), snapshot, persistingBlock);
+            using var script = new ScriptBuilder();
             script.EmitDynamicCall(NativeContract.NameService.Hash, "addRoot", new ContractParameter[] { new ContractParameter(ContractParameterType.String) { Value = root } });
-            engine.LoadScript(script.ToArray(), 0, -1, 0);
+            engine.LoadScript(script.ToArray());
 
             if (engine.Execute() == VMState.FAULT)
             {

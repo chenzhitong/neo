@@ -30,8 +30,8 @@ namespace Neo.SmartContract
 
             ContractState contract = NativeContract.ContractManagement.GetContract(Snapshot, contractHash);
             if (contract is null) throw new InvalidOperationException($"Called Contract Does Not Exist: {contractHash}");
-            ContractMethodDescriptor md = contract.Manifest.Abi.GetMethod(method);
-            if (md is null) throw new InvalidOperationException($"Method {method} Does Not Exist In Contract {contractHash}");
+            ContractMethodDescriptor md = contract.Manifest.Abi.GetMethod(method, args.Count);
+            if (md is null) throw new InvalidOperationException($"Method \"{method}\" with {args.Count} parameter(s) doesn't exist in the contract {contractHash}.");
             bool hasReturnValue = md.ReturnType != ContractParameterType.Void;
 
             if (!hasReturnValue) CurrentContext.EvaluationStack.Push(StackItem.Null);
@@ -41,7 +41,7 @@ namespace Neo.SmartContract
         protected internal void CallNativeContract(int id)
         {
             NativeContract contract = NativeContract.GetContract(id);
-            if (contract is null || contract.ActiveBlockIndex > Snapshot.Height)
+            if (contract is null || contract.ActiveBlockIndex > NativeContract.Ledger.CurrentIndex(Snapshot))
                 throw new InvalidOperationException();
             contract.Invoke(this);
         }
