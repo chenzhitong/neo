@@ -28,8 +28,12 @@ namespace Neo.UnitTests.SmartContract.Native
         public void TestSetup()
         {
             TestBlockchain.InitializeMockNeoSystem();
-            _snapshot = Blockchain.Singleton.GetSnapshot();
-            _persistingBlock = new Block() { Index = 0, Transactions = Array.Empty<Transaction>(), ConsensusData = new ConsensusData() };
+            _snapshot = TestBlockchain.GetTestSnapshot();
+            _persistingBlock = new Block
+            {
+                Header = new Header(),
+                Transactions = Array.Empty<Transaction>()
+            };
         }
 
         [TestMethod]
@@ -45,7 +49,7 @@ namespace Neo.UnitTests.SmartContract.Native
         public void Check_Vote()
         {
             var snapshot = _snapshot.CreateSnapshot();
-            var persistingBlock = new Block() { Index = 1000 };
+            var persistingBlock = new Block { Header = new Header { Index = 1000 } };
 
             byte[] from = Contract.GetBFTAddress(Blockchain.StandbyValidators).ToArray();
 
@@ -99,7 +103,7 @@ namespace Neo.UnitTests.SmartContract.Native
         public void Check_Vote_Sameaccounts()
         {
             var snapshot = _snapshot.CreateSnapshot();
-            var persistingBlock = new Block() { Index = 1000 };
+            var persistingBlock = new Block { Header = new Header { Index = 1000 } };
 
             byte[] from = Contract.GetBFTAddress(Blockchain.StandbyValidators).ToArray();
             var accountState = snapshot.TryGet(CreateStorageKey(20, from)).GetInteroperable<NeoAccountState>();
@@ -126,7 +130,7 @@ namespace Neo.UnitTests.SmartContract.Native
         public void Check_Vote_ChangeVote()
         {
             var snapshot = _snapshot.CreateSnapshot();
-            var persistingBlock = new Block() { Index = 1000 };
+            var persistingBlock = new Block { Header = new Header { Index = 1000 } };
             //from vote to G
             byte[] from = Blockchain.StandbyValidators[0].ToArray();
             var from_Account = Contract.CreateSignatureContract(Blockchain.StandbyValidators[0]).ScriptHash.ToArray();
@@ -157,7 +161,7 @@ namespace Neo.UnitTests.SmartContract.Native
         public void Check_Vote_VoteToNull()
         {
             var snapshot = _snapshot.CreateSnapshot();
-            var persistingBlock = new Block() { Index = 1000 };
+            var persistingBlock = new Block { Header = new Header { Index = 1000 } };
 
             byte[] from = Blockchain.StandbyValidators[0].ToArray();
             var from_Account = Contract.CreateSignatureContract(Blockchain.StandbyValidators[0]).ScriptHash.ToArray();
@@ -187,7 +191,7 @@ namespace Neo.UnitTests.SmartContract.Native
         public void Check_UnclaimedGas()
         {
             var snapshot = _snapshot.CreateSnapshot();
-            var persistingBlock = new Block() { Index = 1000 };
+            var persistingBlock = new Block { Header = new Header { Index = 1000 } };
 
             byte[] from = Contract.GetBFTAddress(Blockchain.StandbyValidators).ToArray();
 
@@ -317,13 +321,15 @@ namespace Neo.UnitTests.SmartContract.Native
             //register more candidates, committee member change
             persistingBlock = new Block
             {
-                Index = (uint)ProtocolSettings.Default.CommitteeMembersCount,
-                Transactions = Array.Empty<Transaction>(),
-                ConsensusData = new ConsensusData(),
-                MerkleRoot = UInt256.Zero,
-                NextConsensus = UInt160.Zero,
-                PrevHash = UInt256.Zero,
-                Witness = new Witness() { InvocationScript = Array.Empty<byte>(), VerificationScript = Array.Empty<byte>() }
+                Header = new Header
+                {
+                    Index = (uint)ProtocolSettings.Default.CommitteeMembersCount,
+                    MerkleRoot = UInt256.Zero,
+                    NextConsensus = UInt160.Zero,
+                    PrevHash = UInt256.Zero,
+                    Witness = new Witness() { InvocationScript = Array.Empty<byte>(), VerificationScript = Array.Empty<byte>() }
+                },
+                Transactions = Array.Empty<Transaction>()
             };
             for (int i = 0; i < ProtocolSettings.Default.CommitteeMembersCount - 1; i++)
             {
@@ -348,7 +354,7 @@ namespace Neo.UnitTests.SmartContract.Native
         public void Check_Transfer()
         {
             var snapshot = _snapshot.CreateSnapshot();
-            var persistingBlock = new Block() { Index = 1000 };
+            var persistingBlock = new Block { Header = new Header { Index = 1000 } };
 
             byte[] from = Contract.GetBFTAddress(Blockchain.StandbyValidators).ToArray();
             byte[] to = new byte[20];
@@ -414,13 +420,15 @@ namespace Neo.UnitTests.SmartContract.Native
             var snapshot = _snapshot.CreateSnapshot();
             var persistingBlock = new Block
             {
-                Index = 1,
-                Transactions = Array.Empty<Transaction>(),
-                Witness = new Witness() { InvocationScript = Array.Empty<byte>(), VerificationScript = Array.Empty<byte>() },
-                ConsensusData = new ConsensusData(),
-                MerkleRoot = UInt256.Zero,
-                NextConsensus = UInt160.Zero,
-                PrevHash = UInt256.Zero
+                Header = new Header
+                {
+                    Index = 1,
+                    Witness = new Witness() { InvocationScript = Array.Empty<byte>(), VerificationScript = Array.Empty<byte>() },
+                    MerkleRoot = UInt256.Zero,
+                    NextConsensus = UInt160.Zero,
+                    PrevHash = UInt256.Zero
+                },
+                Transactions = Array.Empty<Transaction>()
             };
 
             Check_PostPersist(snapshot, persistingBlock).Should().BeTrue();
@@ -442,22 +450,10 @@ namespace Neo.UnitTests.SmartContract.Native
         }
 
         [TestMethod]
-        public void Check_BadScript()
-        {
-            using var engine = ApplicationEngine.Create(TriggerType.Application, null, Blockchain.Singleton.GetSnapshot(), _persistingBlock);
-
-            var script = new ScriptBuilder();
-            script.Emit(OpCode.NOP);
-            engine.LoadScript(script.ToArray());
-
-            Assert.ThrowsException<InvalidOperationException>(() => NativeContract.NEO.Invoke(engine));
-        }
-
-        [TestMethod]
         public void TestCalculateBonus()
         {
             var snapshot = _snapshot.CreateSnapshot();
-            var persistingBlock = new Block { Index = 0 };
+            var persistingBlock = new Block();
 
             StorageKey key = CreateStorageKey(20, UInt160.Zero.ToArray());
 
@@ -525,7 +521,8 @@ namespace Neo.UnitTests.SmartContract.Native
         [TestMethod]
         public void TestGetNextBlockValidators1()
         {
-            using (ApplicationEngine engine = NativeContract.NEO.TestCall("getNextBlockValidators"))
+            var snapshot = TestBlockchain.GetTestSnapshot();
+            using (ApplicationEngine engine = NativeContract.NEO.TestCall(snapshot, "getNextBlockValidators"))
             {
                 var result = engine.ResultStack.Peek();
                 result.GetType().Should().Be(typeof(VM.Types.Array));
@@ -558,7 +555,8 @@ namespace Neo.UnitTests.SmartContract.Native
         [TestMethod]
         public void TestGetCandidates1()
         {
-            using ApplicationEngine engine = NativeContract.NEO.TestCall("getCandidates");
+            var snapshot = TestBlockchain.GetTestSnapshot();
+            using ApplicationEngine engine = NativeContract.NEO.TestCall(snapshot, "getCandidates");
             var array = engine.ResultStack.Pop<VM.Types.Array>();
             array.Count.Should().Be(0);
         }
@@ -596,13 +594,15 @@ namespace Neo.UnitTests.SmartContract.Native
             // Pre-persist
             var persistingBlock = new Block
             {
-                Index = 21,
-                ConsensusData = new ConsensusData(),
-                Transactions = Array.Empty<Transaction>(),
-                Witness = new Witness() { InvocationScript = Array.Empty<byte>(), VerificationScript = Array.Empty<byte>() },
-                MerkleRoot = UInt256.Zero,
-                NextConsensus = UInt160.Zero,
-                PrevHash = UInt256.Zero
+                Header = new Header
+                {
+                    Index = 21,
+                    Witness = new Witness() { InvocationScript = Array.Empty<byte>(), VerificationScript = Array.Empty<byte>() },
+                    MerkleRoot = UInt256.Zero,
+                    NextConsensus = UInt160.Zero,
+                    PrevHash = UInt256.Zero
+                },
+                Transactions = Array.Empty<Transaction>()
             };
             Check_OnPersist(snapshot, persistingBlock).Should().BeTrue();
 
@@ -628,7 +628,8 @@ namespace Neo.UnitTests.SmartContract.Native
         [TestMethod]
         public void TestGetCommittee()
         {
-            using (ApplicationEngine engine = NativeContract.NEO.TestCall("getCommittee"))
+            var snapshot = TestBlockchain.GetTestSnapshot();
+            using (ApplicationEngine engine = NativeContract.NEO.TestCall(snapshot, "getCommittee"))
             {
                 var result = engine.ResultStack.Peek();
                 result.GetType().Should().Be(typeof(VM.Types.Array));
@@ -699,13 +700,13 @@ namespace Neo.UnitTests.SmartContract.Native
         {
             const byte Prefix_CurrentBlock = 12;
             var snapshot = _snapshot.CreateSnapshot();
-            var persistingBlock = new Block { Index = 0 };
+            var persistingBlock = new Block { Header = new Header() };
 
             (BigInteger, bool) result = Check_GetGasPerBlock(snapshot, persistingBlock);
             result.Item2.Should().BeTrue();
             result.Item1.Should().Be(5 * NativeContract.GAS.Factor);
 
-            persistingBlock = new Block { Index = 10 };
+            persistingBlock = new Block { Header = new Header { Index = 10 } };
             (VM.Types.Boolean, bool) result1 = Check_SetGasPerBlock(snapshot, 10 * NativeContract.GAS.Factor, persistingBlock);
             result1.Item2.Should().BeTrue();
             result1.Item1.GetBoolean().Should().BeTrue();
@@ -752,13 +753,15 @@ namespace Neo.UnitTests.SmartContract.Native
 
             var persistingBlock = new Block
             {
-                Index = 0,
-                Transactions = Array.Empty<Transaction>(),
-                Witness = new Witness() { InvocationScript = Array.Empty<byte>(), VerificationScript = Array.Empty<byte>() },
-                ConsensusData = new ConsensusData(),
-                MerkleRoot = UInt256.Zero,
-                NextConsensus = UInt160.Zero,
-                PrevHash = UInt256.Zero
+                Header = new Header
+                {
+                    Index = 0,
+                    Witness = new Witness() { InvocationScript = Array.Empty<byte>(), VerificationScript = Array.Empty<byte>() },
+                    MerkleRoot = UInt256.Zero,
+                    NextConsensus = UInt160.Zero,
+                    PrevHash = UInt256.Zero
+                },
+                Transactions = Array.Empty<Transaction>()
             };
             Check_PostPersist(snapshot, persistingBlock).Should().BeTrue();
 
@@ -776,13 +779,15 @@ namespace Neo.UnitTests.SmartContract.Native
 
             persistingBlock = new Block
             {
-                Index = 1,
-                Transactions = Array.Empty<Transaction>(),
-                Witness = new Witness() { InvocationScript = Array.Empty<byte>(), VerificationScript = Array.Empty<byte>() },
-                ConsensusData = new ConsensusData(),
-                MerkleRoot = UInt256.Zero,
-                NextConsensus = UInt160.Zero,
-                PrevHash = UInt256.Zero
+                Header = new Header
+                {
+                    Index = 1,
+                    Witness = new Witness() { InvocationScript = Array.Empty<byte>(), VerificationScript = Array.Empty<byte>() },
+                    MerkleRoot = UInt256.Zero,
+                    NextConsensus = UInt160.Zero,
+                    PrevHash = UInt256.Zero
+                },
+                Transactions = Array.Empty<Transaction>()
             };
             Check_PostPersist(snapshot, persistingBlock).Should().BeTrue();
 
@@ -795,13 +800,15 @@ namespace Neo.UnitTests.SmartContract.Native
 
             persistingBlock = new Block
             {
-                Index = 21,
-                Transactions = Array.Empty<Transaction>(),
-                Witness = new Witness() { InvocationScript = Array.Empty<byte>(), VerificationScript = Array.Empty<byte>() },
-                ConsensusData = new ConsensusData(),
-                MerkleRoot = UInt256.Zero,
-                NextConsensus = UInt160.Zero,
-                PrevHash = UInt256.Zero
+                Header = new Header
+                {
+                    Index = 21,
+                    Witness = new Witness() { InvocationScript = Array.Empty<byte>(), VerificationScript = Array.Empty<byte>() },
+                    MerkleRoot = UInt256.Zero,
+                    NextConsensus = UInt160.Zero,
+                    PrevHash = UInt256.Zero
+                },
+                Transactions = Array.Empty<Transaction>()
             };
             Check_PostPersist(snapshot, persistingBlock).Should().BeTrue();
 
@@ -920,10 +927,9 @@ namespace Neo.UnitTests.SmartContract.Native
         internal static (BigInteger Value, bool State) Check_GetGasPerBlock(DataCache snapshot, Block persistingBlock)
         {
             using var engine = ApplicationEngine.Create(TriggerType.Application, null, snapshot, persistingBlock);
-            engine.LoadScript(NativeContract.NEO.Script, configureState: p => p.ScriptHash = NativeContract.NEO.Hash);
 
             using var script = new ScriptBuilder();
-            script.EmitPush("getGasPerBlock");
+            script.EmitDynamicCall(NativeContract.NEO.Hash, "getGasPerBlock");
             engine.LoadScript(script.ToArray());
 
             if (engine.Execute() == VMState.FAULT)
@@ -942,11 +948,8 @@ namespace Neo.UnitTests.SmartContract.Native
             UInt160 committeeMultiSigAddr = NativeContract.NEO.GetCommitteeAddress(snapshot);
             using var engine = ApplicationEngine.Create(TriggerType.Application, new Nep17NativeContractExtensions.ManualWitness(committeeMultiSigAddr), snapshot, persistingBlock);
 
-            engine.LoadScript(NativeContract.NEO.Script, configureState: p => p.ScriptHash = NativeContract.NEO.Hash);
-
             var script = new ScriptBuilder();
-            script.EmitPush(gasPerBlock);
-            script.EmitPush("setGasPerBlock");
+            script.EmitDynamicCall(NativeContract.NEO.Hash, "setGasPerBlock", gasPerBlock);
             engine.LoadScript(script.ToArray());
 
             if (engine.Execute() == VMState.FAULT)
@@ -962,16 +965,8 @@ namespace Neo.UnitTests.SmartContract.Native
             using var engine = ApplicationEngine.Create(TriggerType.Application,
                 new Nep17NativeContractExtensions.ManualWitness(signAccount ? new UInt160(account) : UInt160.Zero), snapshot, persistingBlock);
 
-            engine.LoadScript(NativeContract.NEO.Script, configureState: p => p.ScriptHash = NativeContract.NEO.Hash);
-
             using var script = new ScriptBuilder();
-
-            if (pubkey is null)
-                script.Emit(OpCode.PUSHNULL);
-            else
-                script.EmitPush(pubkey);
-            script.EmitPush(account);
-            script.EmitPush("vote");
+            script.EmitDynamicCall(NativeContract.NEO.Hash, "vote", account, pubkey);
             engine.LoadScript(script.ToArray());
 
             if (engine.Execute() == VMState.FAULT)
@@ -990,11 +985,8 @@ namespace Neo.UnitTests.SmartContract.Native
             using var engine = ApplicationEngine.Create(TriggerType.Application,
                 new Nep17NativeContractExtensions.ManualWitness(Contract.CreateSignatureRedeemScript(ECPoint.DecodePoint(pubkey, ECCurve.Secp256r1)).ToScriptHash()), snapshot, persistingBlock, 1100_00000000);
 
-            engine.LoadScript(NativeContract.NEO.Script, configureState: p => p.ScriptHash = NativeContract.NEO.Hash);
-
             using var script = new ScriptBuilder();
-            script.EmitPush(pubkey);
-            script.EmitPush("registerCandidate");
+            script.EmitDynamicCall(NativeContract.NEO.Hash, "registerCandidate", pubkey);
             engine.LoadScript(script.ToArray());
 
             if (engine.Execute() == VMState.FAULT)
@@ -1012,10 +1004,8 @@ namespace Neo.UnitTests.SmartContract.Native
         {
             using var engine = ApplicationEngine.Create(TriggerType.Application, null, snapshot, persistingBlock);
 
-            engine.LoadScript(NativeContract.NEO.Script, configureState: p => p.ScriptHash = NativeContract.NEO.Hash);
-
             using var script = new ScriptBuilder();
-            script.EmitPush("getCommittee");
+            script.EmitDynamicCall(NativeContract.NEO.Hash, "getCommittee");
             engine.LoadScript(script.ToArray());
 
             engine.Execute().Should().Be(VMState.HALT);
@@ -1030,12 +1020,8 @@ namespace Neo.UnitTests.SmartContract.Native
         {
             using var engine = ApplicationEngine.Create(TriggerType.Application, null, snapshot, persistingBlock);
 
-            engine.LoadScript(NativeContract.NEO.Script, configureState: p => p.ScriptHash = NativeContract.NEO.Hash);
-
             using var script = new ScriptBuilder();
-            script.EmitPush(persistingBlock.Index);
-            script.EmitPush(address);
-            script.EmitPush("unclaimedGas");
+            script.EmitDynamicCall(NativeContract.NEO.Hash, "unclaimedGas", address, persistingBlock.Index);
             engine.LoadScript(script.ToArray());
 
             if (engine.Execute() == VMState.FAULT)
@@ -1090,11 +1076,8 @@ namespace Neo.UnitTests.SmartContract.Native
             using var engine = ApplicationEngine.Create(TriggerType.Application,
                 new Nep17NativeContractExtensions.ManualWitness(Contract.CreateSignatureRedeemScript(ECPoint.DecodePoint(pubkey, ECCurve.Secp256r1)).ToScriptHash()), snapshot, persistingBlock);
 
-            engine.LoadScript(NativeContract.NEO.Script, configureState: p => p.ScriptHash = NativeContract.NEO.Hash);
-
             using var script = new ScriptBuilder();
-            script.EmitPush(pubkey);
-            script.EmitPush("unregisterCandidate");
+            script.EmitDynamicCall(NativeContract.NEO.Hash, "unregisterCandidate", pubkey);
             engine.LoadScript(script.ToArray());
 
             if (engine.Execute() == VMState.FAULT)

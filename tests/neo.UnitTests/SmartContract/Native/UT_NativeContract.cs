@@ -4,9 +4,8 @@ using Neo.IO;
 using Neo.Ledger;
 using Neo.SmartContract;
 using Neo.SmartContract.Native;
-using Neo.VM.Types;
+using Neo.VM;
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 
 namespace Neo.UnitTests.SmartContract.Native
@@ -87,30 +86,42 @@ namespace Neo.UnitTests.SmartContract.Native
         [TestMethod]
         public void TestGetContract()
         {
-            Assert.IsTrue(NativeContract.NEO == NativeContract.GetContract(NativeContract.NEO.Id));
             Assert.IsTrue(NativeContract.NEO == NativeContract.GetContract(NativeContract.NEO.Hash));
         }
 
         [TestMethod]
         public void TestInvoke()
         {
-            var snapshot = Blockchain.Singleton.GetSnapshot();
-            ApplicationEngine engine = ApplicationEngine.Create(TriggerType.OnPersist, null, snapshot, null, 0);
-            engine.LoadScript(testNativeContract.Script, configureState: p => p.ScriptHash = testNativeContract.Hash);
+            var snapshot = TestBlockchain.GetTestSnapshot();
+            snapshot.Add(NativeContract.ContractManagement.CreateStorageKey(8, testNativeContract.Hash), new StorageItem(new ContractState
+            {
+                Id = 0,
+                Nef = testNativeContract.Nef,
+                Hash = testNativeContract.Hash,
+                Manifest = testNativeContract.Manifest
+            }));
 
-            ByteString method1 = new ByteString(System.Text.Encoding.Default.GetBytes("wrongMethod"));
-            engine.CurrentContext.EvaluationStack.Push(method1);
-            Assert.ThrowsException<KeyNotFoundException>(() => testNativeContract.Invoke(engine));
+            using (ApplicationEngine engine = ApplicationEngine.Create(TriggerType.OnPersist, null, snapshot, null, 20_00000000))
+            {
+                using ScriptBuilder script = new ScriptBuilder();
+                script.EmitDynamicCall(testNativeContract.Hash, "wrongMethod");
+                engine.LoadScript(script.ToArray());
+                engine.Execute().Should().Be(VMState.FAULT);
+            }
 
-            ByteString method2 = new ByteString(System.Text.Encoding.Default.GetBytes("helloWorld"));
-            engine.CurrentContext.EvaluationStack.Push(method2);
-            testNativeContract.Invoke(engine);
+            using (ApplicationEngine engine = ApplicationEngine.Create(TriggerType.OnPersist, null, snapshot, null, 20_00000000))
+            {
+                using ScriptBuilder script = new ScriptBuilder();
+                script.EmitDynamicCall(testNativeContract.Hash, "helloWorld");
+                engine.LoadScript(script.ToArray());
+                engine.Execute().Should().Be(VMState.HALT);
+            }
         }
 
         [TestMethod]
         public void TestTrigger()
         {
-            var snapshot = Blockchain.Singleton.GetSnapshot();
+            var snapshot = TestBlockchain.GetTestSnapshot();
 
             ApplicationEngine engine1 = ApplicationEngine.Create(TriggerType.Application, null, snapshot, null, 0);
             Assert.ThrowsException<InvalidOperationException>(() => testNativeContract.TestTrigger(engine1));
@@ -122,7 +133,8 @@ namespace Neo.UnitTests.SmartContract.Native
         [TestMethod]
         public void TestTestCall()
         {
-            ApplicationEngine engine = testNativeContract.TestCall("System.Blockchain.GetHeight", 0);
+            var snapshot = TestBlockchain.GetTestSnapshot();
+            ApplicationEngine engine = testNativeContract.TestCall(snapshot, "System.Blockchain.GetHeight", 0);
             engine.ResultStack.Should().BeEmpty();
         }
     }

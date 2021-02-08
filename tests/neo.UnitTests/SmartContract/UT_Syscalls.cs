@@ -39,22 +39,24 @@ namespace Neo.UnitTests.SmartContract
 
             var block = new TrimmedBlock()
             {
-                Index = 0,
-                Timestamp = 2,
-                Version = 3,
-                Witness = new Witness()
+                Header = new Header
                 {
-                    InvocationScript = new byte[0],
-                    VerificationScript = new byte[0]
+                    Index = 0,
+                    Timestamp = 2,
+                    Witness = new Witness()
+                    {
+                        InvocationScript = new byte[0],
+                        VerificationScript = new byte[0]
+                    },
+                    PrevHash = UInt256.Zero,
+                    MerkleRoot = UInt256.Zero,
+                    PrimaryIndex = 1,
+                    NextConsensus = UInt160.Zero,
                 },
-                PrevHash = UInt256.Zero,
-                MerkleRoot = UInt256.Zero,
-                NextConsensus = UInt160.Zero,
-                ConsensusData = new ConsensusData() { Nonce = 1, PrimaryIndex = 1 },
-                Hashes = new UInt256[] { new ConsensusData() { Nonce = 1, PrimaryIndex = 1 }.Hash, tx.Hash }
+                Hashes = new[] { tx.Hash }
             };
 
-            var snapshot = Blockchain.Singleton.GetSnapshot().CreateSnapshot();
+            var snapshot = TestBlockchain.GetTestSnapshot();
 
             using (var script = new ScriptBuilder())
             {
@@ -221,7 +223,7 @@ namespace Neo.UnitTests.SmartContract
         [TestMethod]
         public void System_ExecutionEngine_GetScriptContainer()
         {
-            var snapshot = Blockchain.Singleton.GetSnapshot();
+            var snapshot = TestBlockchain.GetTestSnapshot();
             using (var script = new ScriptBuilder())
             {
                 script.EmitSysCall(ApplicationEngine.System_Runtime_GetScriptContainer);
@@ -264,7 +266,7 @@ namespace Neo.UnitTests.SmartContract
         [TestMethod]
         public void System_Runtime_GasLeft()
         {
-            var snapshot = Blockchain.Singleton.GetSnapshot();
+            var snapshot = TestBlockchain.GetTestSnapshot();
 
             using (var script = new ScriptBuilder())
             {
@@ -316,7 +318,7 @@ namespace Neo.UnitTests.SmartContract
         public void System_Runtime_GetInvocationCounter()
         {
             ContractState contractA, contractB, contractC;
-            var snapshot = Blockchain.Singleton.GetSnapshot();
+            var snapshot = TestBlockchain.GetTestSnapshot();
 
             // Create dummy contracts
 
