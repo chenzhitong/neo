@@ -184,7 +184,7 @@ namespace Neo.Plugins.StateService
         [RpcMethod]
         public JToken GetStateRoot(JArray _params)
         {
-            Result.True_Or(_params.Count == 1, RpcError.InvalidParams.WithData("Invalid params, need a block index."));
+            Result.True_Or(_params.Count == 1, RpcError.InvalidParams.WithData("need a block index."));
             uint index = Result.Ok_Or(() => uint.Parse(_params[0].AsString()), RpcError.InvalidParams.WithData($"Invalid state root index: {_params[0]}"));
             using var snapshot = StateStore.Singleton.GetSnapshot();
             StateRoot state_root = snapshot.GetStateRoot(index).NotNull_Or(RpcError.UnknownStateRoot);
@@ -230,7 +230,7 @@ namespace Neo.Plugins.StateService
         [RpcMethod]
         public JToken GetProof(JArray _params)
         {
-            Result.True_Or(_params.Count == 3, RpcError.InvalidParams.WithData("Invalid params, need a root hash, a script hash, a key."));
+            Result.True_Or(_params.Count == 3, RpcError.InvalidParams.WithData("need a root hash, a script hash, a key."));
             UInt256 root_hash = Result.Ok_Or(() => UInt256.Parse(_params[0].AsString()), RpcError.InvalidParams.WithData($"Invalid root hash: {_params[0]}"));
             UInt160 script_hash = Result.Ok_Or(() => UInt160.Parse(_params[1].AsString()), RpcError.InvalidParams.WithData($"Invalid script hash: {_params[1]}"));
             byte[] key = Result.Ok_Or(() => Convert.FromBase64String(_params[2].AsString()), RpcError.InvalidParams.WithData($"Invalid key: {_params[2]}"));
@@ -258,7 +258,7 @@ namespace Neo.Plugins.StateService
         [RpcMethod]
         public JToken VerifyProof(JArray _params)
         {
-            Result.True_Or(_params.Count == 2, RpcError.InvalidParams.WithData("Invalid params, need root hash, a proof."));
+            Result.True_Or(_params.Count == 2, RpcError.InvalidParams.WithData("need root hash, a proof."));
             UInt256 root_hash = Result.Ok_Or(() => UInt256.Parse(_params[0].AsString()), RpcError.InvalidParams.WithData($"Invalid root hash: {_params[0]}"));
             byte[] proof_bytes = Result.Ok_Or(() => Convert.FromBase64String(_params[1].AsString()), RpcError.InvalidParams.WithData($"Invalid proof: {_params[1]}"));
             return VerifyProof(root_hash, proof_bytes);
@@ -267,7 +267,7 @@ namespace Neo.Plugins.StateService
         [RpcMethod]
         public JToken GetStateHeight(JArray _params)
         {
-            Result.True_Or(_params.Count == 0, RpcError.InvalidParams.WithData("No parameters required."));
+            Result.True_Or(_params.Count == 0, RpcError.InvalidParams.WithData("no parameters required."));
             var json = new JObject();
             json["localrootindex"] = StateStore.Singleton.LocalRootIndex;
             json["validatedrootindex"] = StateStore.Singleton.ValidatedRootIndex;
@@ -293,7 +293,7 @@ namespace Neo.Plugins.StateService
         [RpcMethod]
         public JToken FindStates(JArray _params)
         {
-            Result.True_Or(_params.Count >= 3 || _params.Count <= 5, RpcError.InvalidParams.WithData("Invalid params, need a root hash, a script hash, a prefix, a key(optional), a count(optional)."));
+            Result.True_Or(_params.Count >= 3 || _params.Count <= 5, RpcError.InvalidParams.WithData("need a root hash, a script hash, a prefix, a key(optional), a count(optional)."));
             var root_hash = Result.Ok_Or(() => UInt256.Parse(_params[0].AsString()), RpcError.InvalidParams.WithData($"Invalid root hash: {_params[0]}"));
             (!Settings.Default.FullState && StateStore.Singleton.CurrentLocalRootHash != root_hash).False_Or(RpcError.UnsupportedState);
             var script_hash = Result.Ok_Or(() => UInt160.Parse(_params[1].AsString()), RpcError.InvalidParams.WithData($"Invalid script hash: {_params[1]}"));
@@ -350,7 +350,7 @@ namespace Neo.Plugins.StateService
         [RpcMethod]
         public JToken GetState(JArray _params)
         {
-            Result.True_Or(_params.Count == 3, RpcError.InvalidParams.WithData("Invalid params, need a roothash, a scripthash, a key."));
+            Result.True_Or(_params.Count == 3, RpcError.InvalidParams.WithData("need a roothash, a scripthash, a key."));
             var root_hash = Result.Ok_Or(() => UInt256.Parse(_params[0].AsString()), RpcError.InvalidParams.WithData($"Invalid root hash: {_params[0]}"));
             (!Settings.Default.FullState && StateStore.Singleton.CurrentLocalRootHash != root_hash).False_Or(RpcError.UnsupportedState);
             var script_hash = Result.Ok_Or(() => UInt160.Parse(_params[1].AsString()), RpcError.InvalidParams.WithData($"Invalid script hash: {_params[1]}"));

@@ -20,7 +20,7 @@ namespace Neo.Plugins.RpcServer
         [RpcMethod]
         protected virtual JToken ListPlugins(JArray _params)
         {
-            Result.True_Or(_params.Count == 0, RpcError.InvalidParams.WithData("No parameters required."));
+            Result.True_Or(_params.Count == 0, RpcError.InvalidParams.WithData("no parameters required."));
             return new JArray(Plugin.Plugins
                 .OrderBy(u => u.Name)
                 .Select(u => new JObject
@@ -37,7 +37,7 @@ namespace Neo.Plugins.RpcServer
         [RpcMethod]
         protected virtual JToken ValidateAddress(JArray _params)
         {
-            Result.True_Or(_params.Count == 1, RpcError.InvalidParams.WithData("Invalid params, need an address."));
+            Result.True_Or(_params.Count == 1, RpcError.InvalidParams.WithData("need an address."));
             string address = Result.Ok_Or(() => _params[0].AsString(), RpcError.InvalidParams.WithData($"Invlid address format: {_params[0]}"));
             JObject json = new();
             UInt160 scriptHash;
